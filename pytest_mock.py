@@ -1,5 +1,6 @@
 from __future__ import unicode_literals
 
+import asyncio
 import inspect
 import sys
 
@@ -156,6 +157,48 @@ class MockFixture(object):
             return self._start_patch(self.mock_module.patch, *args, **kwargs)
 
 
+class AsyncMockFixture(MockFixture):
+    """
+    Object to provide the same interface as mock.patch, mock.patch.object,
+    etc for async methods. We need this indirection to keep the same API of the mock package.
+    """
+
+    def __init__(self, patches, mocks, mock_module):
+        self._patches = patches
+        self._mocks = mocks
+        self.mock_module = mock_module
+        self.event_loop = asyncio.get_event_loop()
+
+    async def _start_patch(self, mock_func, *args, **kwargs):
+        """Patches something by calling the given function from the mock
+        module, registering the patch to stop it later and returns the
+        mock object resulting from the mock call.
+        """
+        p = mock_func(*args, **kwargs)
+        mocked = await p.start()
+        self._patches.append(p)
+        if hasattr(mocked, 'reset_mock'):
+            self._mocks.append(mocked)
+        return mocked
+
+    def object(self, *args, **kwargs):
+        """API to mock.patch.object"""
+        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.object, *args, **kwargs))
+
+    def multiple(self, *args, **kwargs):
+        """API to mock.patch.multiple"""
+        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.multiple, *args,
+                                 **kwargs))
+
+    def dict(self, *args, **kwargs):
+        """API to mock.patch.dict"""
+        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.dict, *args, **kwargs))
+
+    def __call__(self, *args, **kwargs):
+        """API to mock.patch"""
+        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch, *args, **kwargs))
+
+
 @pytest.yield_fixture
 def mocker(pytestconfig):
     """
@@ -163,6 +206,17 @@ def mocker(pytestconfig):
     takes care of automatically undoing all patches after each test method.
     """
     result = MockFixture(pytestconfig)
+    yield result
+    result.stopall()
+
+
+@pytest.yield_fixture
+def async_mocker(pytestconfig):
+    """
+    return an object that has the same interface to the `mock` module, but
+    takes care of automatically undoing all patches after each test method.
+    """
+    result = AsyncMockFixture(pytestconfig)
     yield result
     result.stopall()
 
