@@ -159,44 +159,55 @@ class MockFixture(object):
 
 class AsyncMockFixture(MockFixture):
     """
-    Object to provide the same interface as mock.patch, mock.patch.object,
-    etc for async methods. We need this indirection to keep the same API of the mock package.
-    """
+   Fixture that provides the same interface to functions in the mock module,
+   ensuring that they are uninstalled at the end of each test.
+
+   This is made for asyc calls
+   """
 
     def __init__(self, patches, mocks, mock_module):
-        self._patches = patches
-        self._mocks = mocks
-        self.mock_module = mock_module
-        self.event_loop = asyncio.get_event_loop()
+        super(AsyncMockFixture, self).__init__(patches, mocks, mock_module)
 
-    async def _start_patch(self, mock_func, *args, **kwargs):
-        """Patches something by calling the given function from the mock
-        module, registering the patch to stop it later and returns the
-        mock object resulting from the mock call.
+    class _Patcher:
         """
-        p = mock_func(*args, **kwargs)
-        mocked = await p.start()
-        self._patches.append(p)
-        if hasattr(mocked, 'reset_mock'):
-            self._mocks.append(mocked)
-        return mocked
+        Object to provide the same interface as mock.patch, mock.patch.object,
+        etc for async methods. We need this indirection to keep the same API of the mock package.
+        """
 
-    def object(self, *args, **kwargs):
-        """API to mock.patch.object"""
-        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.object, *args, **kwargs))
+        def __init__(self, patches, mocks, mock_module):
+            self._patches = patches
+            self._mocks = mocks
+            self.mock_module = mock_module
+            self.event_loop = asyncio.get_event_loop()
+            
+        async def _start_patch(self, mock_func, *args, **kwargs):
+            """Patches something by calling the given function from the mock
+            module, registering the patch to stop it later and returns the
+            mock object resulting from the mock call.
+            """
+            p = mock_func(*args, **kwargs)
+            mocked = await p.start()
+            self._patches.append(p)
+            if hasattr(mocked, 'reset_mock'):
+                self._mocks.append(mocked)
+            return mocked
 
-    def multiple(self, *args, **kwargs):
-        """API to mock.patch.multiple"""
-        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.multiple, *args,
-                                 **kwargs))
+        def object(self, *args, **kwargs):
+            """API to mock.patch.object"""
+            return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.object, *args, **kwargs))
 
-    def dict(self, *args, **kwargs):
-        """API to mock.patch.dict"""
-        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.dict, *args, **kwargs))
+        def multiple(self, *args, **kwargs):
+            """API to mock.patch.multiple"""
+            return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.multiple, *args,
+                                     **kwargs))
 
-    def __call__(self, *args, **kwargs):
-        """API to mock.patch"""
-        return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch, *args, **kwargs))
+        def dict(self, *args, **kwargs):
+            """API to mock.patch.dict"""
+            return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch.dict, *args, **kwargs))
+
+        def __call__(self, *args, **kwargs):
+            """API to mock.patch"""
+            return self.event_loop.run_until_complete(self._start_patch(self.mock_module.patch, *args, **kwargs))
 
 
 @pytest.yield_fixture
